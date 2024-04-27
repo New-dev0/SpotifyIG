@@ -1,0 +1,8 @@
+session.json
+thumb.png
+.env
+*zip
+__pycache__/
+*json
+*mp4
+*gif

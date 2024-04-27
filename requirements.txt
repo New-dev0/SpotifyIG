@@ -1,0 +1,4 @@
+aiohttp
+instagrapi
+pillow
+moviepy
