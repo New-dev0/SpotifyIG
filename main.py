@@ -7,7 +7,6 @@ from create import createVideo
 from instagrapi import Client
 from datetime import datetime
 from instagrapi.types import StoryLink
-from datetime import timedelta
 
 iclient = Client()
 if os.path.exists(SETTINGS_PATH):
@@ -17,7 +16,7 @@ else:
     iclient.dump_settings(SETTINGS_PATH)
 
 
-def publishToInstagram(path, track_url, hasAudio):
+def publishToInstagram(path, track_url):
     iclient.video_upload_to_story(
         path,
         links=[
@@ -92,7 +91,7 @@ async def main():
                         videoPath, hasAudio = await createVideo(videoInfo)
                         # print(trackUrl, videoPath)
                         dailyCache[uri] = datetime.now()
-                        await publishToInstagram(videoPath, trackUrl, hasAudio)
+                        await publishToInstagram(videoPath, trackUrl)
                         os.remove(videoPath)
                         thumbPath = f"{videoPath}.jpg"
                         if os.path.exists(thumbPath):
