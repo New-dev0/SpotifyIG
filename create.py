@@ -1,11 +1,9 @@
 import os
 import json
 import requests
-from PIL import Image, ImageDraw, ImageChops, ImageEnhance, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 from PIL.ImageFont import truetype
-from PIL.ImageFilter import GaussianBlur
-from PIL import ImageFilter
-from datetime import datetime, date
+from datetime import datetime
 from config import MAX_AUDIO
 from calendar import month_name
 from asyncio.subprocess import create_subprocess_exec, PIPE
@@ -15,16 +13,13 @@ def format_time(milliseconds):
     minutes, seconds = divmod(int(milliseconds / 1000), 60)
     hours, minutes = divmod(minutes, 60)
     days, hours = divmod(hours, 24)
-    weeks, days = divmod(days, 7)
     tmp = (
-        ((str(weeks) + "w:") if weeks else "")
-        + ((str(days) + "d:") if days else "")
-        + ((str(hours) + "h:") if hours else "")
-        + ((str(minutes) + "m:") if minutes else "")
-        + ((str(seconds) + "s") if seconds else "")
+        ((f"{hours:02d}:") if hours else "")
+        + ((f"{minutes:02d}:" if minutes else "00:"))
+        + ((f"{seconds:02d}") if seconds else "00")
     )
     if not tmp:
-        return "0s"
+        return "00"
 
     if tmp.endswith(":"):
         return tmp[:-1]
@@ -45,8 +40,6 @@ async def getFileDuration(audioPath):
 async def mergeAudioVideo(video_path, audio_path, output_path):
     commands = [
         "ffmpeg",
-        "-stream_loop",
-        "-1",
         "-i",
         video_path,
         "-i",
@@ -54,12 +47,8 @@ async def mergeAudioVideo(video_path, audio_path, output_path):
         "-shortest",
         "-c:v",
         "libx265",
-        "-crf",
-        "26",
         "-c:a",
         "aac",
-        "-q:a",
-        "4",
         output_path,
         "-y",
     ]
@@ -71,7 +60,7 @@ async def mergeAudioVideo(video_path, audio_path, output_path):
     await proc.wait()
     output = await proc.stdout.read()
     err = await proc.stderr.read()
-    print(output, err)
+    # print(output, err)
     return output, err
 
 
@@ -81,8 +70,6 @@ async def createVideo(DATA):
         mpPath = f"{trackName}.mp4"
         proc = await create_subprocess_exec(
             "ffmpeg",
-            "-stream_loop",
-            "2",
             "-i",
             imageGif,
             "-movflags",
@@ -101,6 +88,20 @@ async def createVideo(DATA):
     os.remove(audioFile)
     os.remove(imageGif)
     return outputPath, True
+
+
+def add_corners(im, rad):
+    circle = Image.new("L", (rad * 2, rad * 2), 0)
+    draw = ImageDraw.Draw(circle)
+    draw.ellipse((0, 0, rad * 2 - 1, rad * 2 - 1), fill=255)
+    alpha = Image.new("L", im.size, 255)
+    w, h = im.size
+    alpha.paste(circle.crop((0, 0, rad, rad)), (0, 0))
+    alpha.paste(circle.crop((0, rad, rad, rad * 2)), (0, h - rad))
+    alpha.paste(circle.crop((rad, 0, rad * 2, rad)), (w - rad, 0))
+    alpha.paste(circle.crop((rad, rad, rad * 2, rad * 2)), (w - rad, h - rad))
+    im.putalpha(alpha)
+    return im
 
 
 async def createImage(DATA):
@@ -129,11 +130,12 @@ async def createImage(DATA):
             f.write(requests.get(DATA["item"]["album"]["images"][0]["url"]).content)
 
         thumbActual = Image.open("thumb.png")
+        thumbActual = add_corners(thumbActual, 20)
         # create a second Image from thumbnail for background!
         enhancer = ImageEnhance.Brightness(thumbActual)
         # thumbOverlay = Image.new("RGBA", thumb.size, "white")
         # thumb.paste(thumbOverlay, (0,0))
-        # thumb.filter(ImageFilter.BoxBlur(10))
+        # thumbActual.filter(ImageFilter.BoxBlur(10))
         thumb = enhancer.enhance(0.4).resize((img.height, img.height))
         # img = ImageChops.multiply(img, thumbOverlay)
         # thumb.show()
@@ -162,25 +164,30 @@ async def createImage(DATA):
         )
         thumbActual = ImageOps.expand(thumbActual, border=5, fill="white")
         img.paste(thumbActual, (w, h))
-
         # add Date to bottom right
         font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=60)
         tag = "AM" if now.hour < 12 else "PM"
-        dateString = f"{month_name[now.month]} {now.day}, {now.hour}:{now.minute} {tag}"
+        dateString = (
+            f"{month_name[now.month]} {now.day}, {now.hour:02d}:{now.minute:02d} {tag}"
+        )
         draw.text((img.width - 30, img.height - 50), dateString, font=font, anchor="rs")
 
         # Add spotify icon
-        # spotify = Image.open("assets/spotify.png").resize((100, 100))
-        # img.paste(spotify, (img.width - spotify.width - 20, img.height - spotify.height - 20), mask=spotify)
+        spotify = Image.open("assets/spotify.png").resize((100, 100))
+        img.paste(spotify, (20, img.height - spotify.height - 20), mask=spotify)
 
         # add play-slider
         h = 1400
         w = img.width - 80
 
         diff = (img.width - thumbActual.width) // 2
-        draw.line((diff, h, thumbActual.width + diff, h), fill="white", width=15)
+        draw.rounded_rectangle(
+            (diff, h, thumbActual.width + diff, h + 10),
+            radius=5,
+            fill="white",
+        )
         diff = (((thumbActual.width) // Aduration) * (frame)) + diff
-        draw.ellipse((diff - 25, h - 25, diff + 25, h + 25), fill="#6fd1c6")
+        draw.ellipse((diff - 25, h - 25 + 2.5, diff + 25, h + 25 + 2.5), fill="#6fd1c6")
 
         # add playing time
         draw.text(
@@ -192,7 +199,7 @@ async def createImage(DATA):
         )
         draw.text(
             (30, h + 25),
-            f"0:{frame}",
+            f"00:{frame:02d}",
             fill="white",
             font=font,
         )
