@@ -7,7 +7,6 @@ from create import createVideo
 from instagrapi import Client
 from datetime import datetime
 from instagrapi.types import StoryLink
-from datetime import timedelta
 
 iclient = Client()
 if os.path.exists(SETTINGS_PATH):
@@ -17,7 +16,7 @@ else:
     iclient.dump_settings(SETTINGS_PATH)
 
 
-def publishToInstagram(path, track_url, hasAudio):
+def publishToInstagram(path, track_url):
     iclient.video_upload_to_story(
         path,
         links=[
@@ -25,7 +24,6 @@ def publishToInstagram(path, track_url, hasAudio):
             StoryLink(webUri="https://github.com/New-dev0/SpotifyIG"),
         ],
     )
-    print("Posted on Instagram!")
 
 
 dailyCache = {}
@@ -69,6 +67,13 @@ async def main():
                 videoInfo = await response.json()
                 if videoInfo.get("item"):
                     uri = videoInfo["item"]["uri"]
+                    trackUrl = videoInfo["item"]["external_urls"]["spotify"]
+
+                    if currentlyPlaying and currentlyPlaying == uri:
+                        print("Already playing!")
+                        await asyncio.sleep(sleepTime)
+                        continue
+
                     if dailyCache.get(uri) and (
                         (datetime.now() - dailyCache[uri]).days < 1
                     ):
@@ -76,23 +81,17 @@ async def main():
                         await asyncio.sleep(sleepTime)
                         continue
 
-                    if currentlyPlaying and currentlyPlaying == uri:
-                        print("Already playing!")
-                        await asyncio.sleep(sleepTime)
-                        continue
-
-                    trackUrl = videoInfo["item"]["external_urls"]["spotify"]
                     if (
                         videoInfo.get("is_playing")
                         and videoInfo.get("progress_ms", 0) > 10000
-                    ):
-                        sleep_time = 5
+                    ) and videoInfo.get("item").get("preview_url"):
+                        sleep_time = 15
                         currentlyPlaying = uri
 
                         videoPath, hasAudio = await createVideo(videoInfo)
                         # print(trackUrl, videoPath)
                         dailyCache[uri] = datetime.now()
-                        await publishToInstagram(videoPath, trackUrl, hasAudio)
+                        await publishToInstagram(videoPath, trackUrl)
                         os.remove(videoPath)
                         thumbPath = f"{videoPath}.jpg"
                         if os.path.exists(thumbPath):

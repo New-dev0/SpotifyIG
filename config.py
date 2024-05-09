@@ -1,10 +1,10 @@
 import asyncio
-from decouple import config, Config, RepositoryEnv
+from decouple import config, RepositoryEnv
 from aiohttp import ClientSession
 
 CLIENT_ID = config("CLIENT_ID", default="")
 CLIENT_SECRET = config("CLIENT_SECRET", default="")
-INTIIAL_TOKEN = config("INITIAL_TOKEN", default="")
+INITIAL_TOKEN = config("INITIAL_TOKEN", default="")
 MAX_AUDIO = config("MAX_AUDIO", default=30, cast=int)
 PORT = config("PORT", default=3000, cast=int)
 
@@ -24,7 +24,7 @@ def updateConfig(keyValueDict):
             f.write(f"{x}={y}\n")
 
 
-if not INTIIAL_TOKEN:
+if not INITIAL_TOKEN:
     from aiohttp import web
     from aiohttp.web_app import Application
 
@@ -36,7 +36,7 @@ if not INTIIAL_TOKEN:
 
     async def getInitialToken():
         url = f"https://accounts.spotify.com/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri=http://localhost:{PORT}&scope=user-read-playback-state%20user-read-currently-playing"
-
+        print(f"Redirecting to {url}")
         try:
             import webbrowser
 
