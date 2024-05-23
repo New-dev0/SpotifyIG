@@ -1,10 +1,10 @@
 import os
 import json
-import requests
+import requests, asyncio
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 from PIL.ImageFont import truetype
 from datetime import datetime
-from config import MAX_AUDIO
+from config import MAX_AUDIO, FPS as fps
 from calendar import month_name
 from asyncio.subprocess import create_subprocess_exec, PIPE
 
@@ -104,6 +104,95 @@ def add_corners(im, rad):
     return im
 
 
+async def createFrame(
+    frame, fps, DATA, item, now, Aduration, second=0, position=0, feedback=None
+):
+    #    print("new image", position, frame)
+    img = Image.new("RGBA", (1080, 1920), color="white")
+
+    thumbActual = Image.open("thumb.png")
+    thumbActual = add_corners(thumbActual, 20)
+    # create a second Image from thumbnail for background!
+    enhancer = ImageEnhance.Brightness(thumbActual)
+    # thumbOverlay = Image.new("RGBA", thumb.size, "white")
+    # thumb.paste(thumbOverlay, (0,0))
+    # thumbActual.filter(ImageFilter.BoxBlur(10))
+    thumb = enhancer.enhance(0.4).resize((img.height, img.height))
+    # img = ImageChops.multiply(img, thumbOverlay)
+    # thumb.show()
+    img.paste(thumb, (-img.width // 2, 0))
+    draw = ImageDraw.Draw(img)
+    font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=60)
+
+    # add Heading texts.
+    draw.text((40, 100), "Listening to", fill="white", font=font)
+    font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=100)
+    draw.text((40, 162), DATA["item"]["name"], fill="white", font=font)
+
+    # resize thumbnail and get position
+    thumbActual = thumbActual.resize((img.width - 100,) * 2)
+    w = (img.width // 2) - (thumbActual.width // 2)
+    h = 280
+    # wrap: Play button over middle thumbnail
+    playButton = Image.open("assets/play.png")
+    thumbActual.paste(
+        playButton,
+        (
+            (thumbActual.width // 2) - (playButton.width // 2),
+            (thumbActual.height // 2) - (playButton.height // 2),
+        ),
+        mask=playButton,
+    )
+    #        thumbActual = ImageOps.expand(thumbActual, border=5, fill="white")
+    img.paste(thumbActual, (w, h))
+    # add Date to bottom right
+    font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=60)
+    tag = "AM" if now.hour < 12 else "PM"
+    dateString = (
+        f"{month_name[now.month]} {now.day}, {now.hour:02d}:{now.minute:02d} {tag}"
+    )
+    draw.text((img.width - 30, img.height - 50), dateString, font=font, anchor="rs")
+
+    # Add spotify icon
+    spotify = Image.open("assets/spotify.png").resize((100, 100))
+    img.paste(spotify, (20, img.height - spotify.height - 20), mask=spotify)
+
+    # add play-slider
+    h = 1400
+    w = img.width - 80
+
+    diff = (img.width - thumbActual.width) // 2
+    draw.rounded_rectangle(
+        (diff, h, thumbActual.width + diff, h + 10),
+        radius=5,
+        fill="white",
+    )
+    frame += 1
+    n_dif = thumbActual.width / ( Aduration * fps)
+    print(n_dif, thumbActual.width)
+    diff = (n_dif * (frame)) + diff
+    draw.ellipse((diff - 25, h - 25 + 2.5, diff + 25, h + 25 + 2.5), fill="#6fd1c6")
+    print(diff)
+
+    # add playing time
+    draw.text(
+        (img.width - 30, h + 68),
+        format_time(item["duration_ms"]),
+        fill="white",
+        font=font,
+        anchor="rs",
+    )
+    position += 1
+    draw.text(
+        (30, h + 25),
+        f"00:{second}:{second * position}",
+        fill="white",
+        font=font,
+    )
+    if feedback is not None:
+        feedback.append((position, img))
+
+
 async def createImage(DATA):
     print("Creating Video GIF...")
     item = DATA["item"]
@@ -122,95 +211,38 @@ async def createImage(DATA):
     Aduration = int(item["duration_ms"]) / 1000
     now = datetime.now()
     imageBox = []
+    start = 0
+    with open("thumb.png", "wb") as f:
+        f.write(requests.get(DATA["item"]["album"]["images"][0]["url"]).content)
 
-    for frame in range(0, maxDuration):
-        img = Image.new("RGBA", (1080, 1920), color="white")
-
-        with open("thumb.png", "wb") as f:
-            f.write(requests.get(DATA["item"]["album"]["images"][0]["url"]).content)
-
-        thumbActual = Image.open("thumb.png")
-        thumbActual = add_corners(thumbActual, 20)
-        # create a second Image from thumbnail for background!
-        enhancer = ImageEnhance.Brightness(thumbActual)
-        # thumbOverlay = Image.new("RGBA", thumb.size, "white")
-        # thumb.paste(thumbOverlay, (0,0))
-        # thumbActual.filter(ImageFilter.BoxBlur(10))
-        thumb = enhancer.enhance(0.4).resize((img.height, img.height))
-        # img = ImageChops.multiply(img, thumbOverlay)
-        # thumb.show()
-        img.paste(thumb, (-img.width // 2, 0))
-        draw = ImageDraw.Draw(img)
-        font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=60)
-
-        # add Heading texts.
-        draw.text((40, 100), "Listening to", fill="white", font=font)
-        font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=100)
-        draw.text((40, 162), DATA["item"]["name"], fill="white", font=font)
-
-        # resize thumbnail and get position
-        thumbActual = thumbActual.resize((img.width - 100,) * 2)
-        w = (img.width // 2) - (thumbActual.width // 2)
-        h = 280
-        # wrap: Play button over middle thumbnail
-        playButton = Image.open("assets/play.png")
-        thumbActual.paste(
-            playButton,
-            (
-                (thumbActual.width // 2) - (playButton.width // 2),
-                (thumbActual.height // 2) - (playButton.height // 2),
-            ),
-            mask=playButton,
+    while start < maxDuration:
+        newBox = []
+        n_set = start * fps
+        await asyncio.gather(
+            *[
+                createFrame(
+                    frame,
+                    fps,
+                    DATA,
+                    item,
+                    now,
+                    Aduration,
+                    position=position,
+                    second=start,
+                    feedback=newBox,
+                )
+                for position, frame in enumerate(range(n_set, n_set + fps))
+            ]
         )
-        thumbActual = ImageOps.expand(thumbActual, border=5, fill="white")
-        img.paste(thumbActual, (w, h))
-        # add Date to bottom right
-        font = truetype("assets/fonts/BebasNeue-Regular.ttf", size=60)
-        tag = "AM" if now.hour < 12 else "PM"
-        dateString = (
-            f"{month_name[now.month]} {now.day}, {now.hour:02d}:{now.minute:02d} {tag}"
-        )
-        draw.text((img.width - 30, img.height - 50), dateString, font=font, anchor="rs")
-
-        # Add spotify icon
-        spotify = Image.open("assets/spotify.png").resize((100, 100))
-        img.paste(spotify, (20, img.height - spotify.height - 20), mask=spotify)
-
-        # add play-slider
-        h = 1400
-        w = img.width - 80
-
-        diff = (img.width - thumbActual.width) // 2
-        draw.rounded_rectangle(
-            (diff, h, thumbActual.width + diff, h + 10),
-            radius=5,
-            fill="white",
-        )
-        diff = (((thumbActual.width) // Aduration) * (frame)) + diff
-        draw.ellipse((diff - 25, h - 25 + 2.5, diff + 25, h + 25 + 2.5), fill="#6fd1c6")
-
-        # add playing time
-        draw.text(
-            (img.width - 30, h + 68),
-            format_time(item["duration_ms"]),
-            fill="white",
-            font=font,
-            anchor="rs",
-        )
-        draw.text(
-            (30, h + 25),
-            f"00:{frame:02d}",
-            fill="white",
-            font=font,
-        )
-
-        imageBox.append(img)
+        start += 1
+        newBox = map(lambda x: x[1], sorted(newBox, key=lambda x: x[0]))
+        imageBox.extend(newBox)
 
     imageBox[0].save(
         f"{name}.gif",
         save_all=True,
         append_images=imageBox[1:],
-        duration=1000,
+        duration=1000 // fps,
         loop=100,
     )
     return f"{name}.gif", name, audioFile

@@ -21,7 +21,8 @@ def publishToInstagram(path, track_url):
         path,
         links=[
             StoryLink(webUri=track_url),
-            StoryLink(webUri="https://github.com/New-dev0/SpotifyIG"),
+            StoryLink(webUri="https://github.com/New-dev0/SpotifyIG",
+                      x=0.3, y=0.3, width=0.3, height=0.3),
         ],
     )
 
@@ -33,7 +34,7 @@ async def main():
     data = RepositoryEnv(".env").data
     access_token = data.get("ACCESS_TOKEN")
     refresh_token = data.get("REFRESH_TOKEN")
-    sleepTime = 5
+    sleepTime = 15
     currentlyPlaying = None
 
     oauth = {"Authorization": f"Bearer {access_token}"}
@@ -85,19 +86,21 @@ async def main():
                         videoInfo.get("is_playing")
                         and videoInfo.get("progress_ms", 0) > 10000
                     ) and videoInfo.get("item").get("preview_url"):
-                        sleep_time = 15
+                        sleepTime = 15
                         currentlyPlaying = uri
 
-                        videoPath, hasAudio = await createVideo(videoInfo)
-                        # print(trackUrl, videoPath)
+                        videoPath, __ = await createVideo(videoInfo)
                         dailyCache[uri] = datetime.now()
-                        await publishToInstagram(videoPath, trackUrl)
+                        try:
+                            await publishToInstagram(videoPath, trackUrl)
+                        except Exception as er:
+                            print(er)
                         os.remove(videoPath)
                         thumbPath = f"{videoPath}.jpg"
                         if os.path.exists(thumbPath):
                             os.remove(thumbPath)
                     else:
-                        sleep_time = 15
+                        sleepTime = 15
 
                 else:
                     sleepTime = 15

@@ -7,11 +7,12 @@ CLIENT_SECRET = config("CLIENT_SECRET", default="")
 INITIAL_TOKEN = config("INITIAL_TOKEN", default="")
 MAX_AUDIO = config("MAX_AUDIO", default=30, cast=int)
 PORT = config("PORT", default=3000, cast=int)
+TAGS = config("TAGS", default="")
 
 IG_USERNAME = config("IG_USERNAME", default="")
 IG_PASSWORD = config("IG_PASSWORD", default="")
 SETTINGS_PATH = config("SETTINGS_PATH", default="./settings.json")
-
+FPS = config("FPS", cast=int, default=5)
 
 def updateConfig(keyValueDict):
     from decouple import RepositoryEnv
